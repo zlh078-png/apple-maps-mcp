@@ -64,3 +64,8 @@ app.post("/messages", async (req, res) => {
 
 // 导出 Express 实例供 Vercel 使用
 export default app;
+// 在原来的 export default app; 下面加上：
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server is running on port ${PORT}`);
+});
