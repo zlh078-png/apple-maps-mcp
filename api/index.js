@@ -4,6 +4,12 @@ import express from "express";
 
 const app = express();
 
+// 1. 基础检查路由（访问首页不该报500）
+app.get("/", (req, res) => {
+  res.send("Apple Maps MCP is running! Please connect via /sse");
+});
+
+// 2. 创建 MCP 服务器实例
 const server = new Server({
   name: "apple-maps-helper",
   version: "1.0.0",
@@ -11,41 +17,50 @@ const server = new Server({
   capabilities: { tools: {} }
 });
 
+// 3. 注册工具
 server.tool("search_in_apple_maps", {
-  location: { type: "string", description: "地点名称" }
+  location: { type: "string" }
 }, async ({ location }) => {
   return {
-    content: [{ type: "text", text: `已生成链接：\nmaps://?q=${encodeURIComponent(location)}` }]
+    content: [{ type: "text", text: `maps://?q=${encodeURIComponent(location)}` }]
   };
 });
 
 server.tool("navigate_in_apple_maps", {
-  destination: { type: "string", description: "目的地名称" },
-  mode: { type: "string", enum: ["d", "w", "r"], description: "模式：d驾车, w走路, r公交" }
+  destination: { type: "string" },
+  mode: { type: "string" }
 }, async ({ destination, mode }) => {
   return {
-    content: [{ type: "text", text: `已生成导航：\nmaps://?daddr=${encodeURIComponent(destination)}&dirflg=${mode}` }]
+    content: [{ type: "text", text: `maps://?daddr=${encodeURIComponent(destination)}&dirflg=${mode}` }]
   };
 });
 
-// 首页路由：防止 Vercel 崩溃，并让你确认服务器在线
-app.get("/", (req, res) => {
-  res.send("Apple Maps MCP Server is Running!");
-});
-
-let transport;
+// 关键修复：处理 SSE 连接
+let transport = null;
 
 app.get("/sse", async (req, res) => {
-  transport = new SSEServerTransport("/messages", res);
-  await server.connect(transport);
+  console.log("New SSE request received");
+  try {
+    transport = new SSEServerTransport("/messages", res);
+    await server.connect(transport);
+  } catch (error) {
+    console.error("SSE Error:", error);
+    res.status(500).send("Internal Server Error during SSE setup");
+  }
 });
 
 app.post("/messages", async (req, res) => {
   if (transport) {
-    await transport.handlePostMessage(req, res);
+    try {
+      await transport.handlePostMessage(req, res);
+    } catch (error) {
+      console.error("Message handling error:", error);
+      res.status(500).send("Error handling message");
+    }
   } else {
     res.status(400).send("No active SSE transport");
   }
 });
 
+// 导出 Express 实例供 Vercel 使用
 export default app;
